@@ -153,8 +153,8 @@ class MambaSegmentor(BaseSegmenter):
 
 
 @register_model
-def ReMamber_Mamba(img_size=256, model_size="tiny", **kwargs):
+def ReMamber_Mamba(img_size=256, model_size="tiny", pretrain_path="./pretrain", **kwargs):
     config_dict = update_mamba_config(model_size)
     backbone = ReMamber(img_size=img_size, **config_dict)
-    backbone, ret = load_ckpt(backbone, model_size)
+    backbone, ret = load_ckpt(backbone, model_size, pretrain_path=pretrain_path)
     return MambaSegmentor(backbone, **config_dict), ret[0]

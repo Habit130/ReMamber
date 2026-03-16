@@ -161,10 +161,10 @@ class ConvSegmentor(BaseSegmenter):
 
 
 @register_model
-def ReMamber_Conv(img_size, model_size="base", **kwargs):
+def ReMamber_Conv(img_size, model_size="base", pretrain_path="./pretrain", **kwargs):
     config_dict = update_mamba_config(model_size)
     backbone = ReMamber(**config_dict)
-    backbone, ret = load_ckpt(backbone, model_size)
+    backbone, ret = load_ckpt(backbone, model_size, pretrain_path=pretrain_path)
     model = ConvSegmentor(backbone, img_size=img_size, embed_dim=config_dict['dims'][0], patch_size=config_dict['patch_size'])
     return model, ret[0]
 

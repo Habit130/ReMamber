@@ -155,11 +155,13 @@ def create_optimizer(args, model:nn.Module, new_param):
     return optimizer
 
 
-def load_ckpt(backbone, model_size):
+def load_ckpt(backbone, model_size, pretrain_path="./pretrain"):
     if model_size == 'base':
         name = "vssm_base_0229_ckpt_epoch_237.pth"
-        path = f"pretrain/{name}"
-        
+        path = os.path.join(pretrain_path, name)
+    else:
+        raise ValueError(f"Unsupported model size: {model_size}")
+
     st = torch.load(path, map_location='cpu')
     ret = backbone.load_state_dict(st['model'], strict=False)
     ret0_toprint = []

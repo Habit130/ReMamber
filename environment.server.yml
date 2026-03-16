@@ -1,0 +1,19 @@
+name: remamber-server
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10.13
+  - pip
+  - pytorch=2.1.1
+  - torchvision=0.16.1
+  - torchaudio=2.1.1
+  - pytorch-cuda=11.8
+  - ninja
+  - git
+  - pip:
+      - -r requirements.txt
+      - gdown==5.2.0
+      - huggingface_hub>=0.27,<1
+      - triton==2.1.0

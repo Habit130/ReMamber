@@ -3,6 +3,8 @@
 """
 Train and eval functions used in main.py
 """
+import json
+from pathlib import Path
 from typing import Iterable, Optional
 
 import numpy as np
@@ -28,6 +30,32 @@ def trainMetricGPU(output, target, threshold=0.5):
 
     iou = ious.mean()
     return iou
+
+
+def _write_metrics(metrics, metrics_path):
+    if metrics_path is None:
+        return
+    metrics_path = Path(metrics_path)
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+
+
+def _compute_custom_binary_metrics(tp, fp, fn, tn):
+    eps = 1e-6
+    iou = tp / (tp + fp + fn + eps)
+    dice = 2 * tp / (2 * tp + fp + fn + eps)
+    recall = tp / (tp + fn + eps)
+    bg_iou = tn / (tn + fp + fn + eps)
+    bg_acc = tn / (tn + fp + eps)
+    miou = (iou + bg_iou) / 2
+    macc = (recall + bg_acc) / 2
+    return {
+        'iou': iou * 100.0,
+        'dice': dice * 100.0,
+        'recall': recall * 100.0,
+        'miou': miou * 100.0,
+        'macc': macc * 100.0,
+    }
 
 def train_one_epoch(model: torch.nn.Module, 
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -78,7 +106,7 @@ def train_one_epoch(model: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device, amp_autocast, log_every=10):
+def evaluate(data_loader, model, device, amp_autocast, log_every=10, metric_mode='legacy', metrics_path=None):
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -120,21 +148,48 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
             single_pred = single_pred.sigmoid()
             single_pred = single_pred.cpu().numpy()
             single_pred = single_pred > 0.5
-            inter = np.logical_and(single_pred, gt_mask).sum()
-            union = np.logical_or(single_pred, gt_mask).sum()
-            iou = inter / (union  + 1e-6)
-            metric_logger.meters['inter'].update(inter)
-            metric_logger.meters['union'].update(union)
-            metric_logger.meters['iou'].update(iou)
+            gt_mask = np.asarray(gt_mask).astype(bool)
+            tp = np.logical_and(single_pred, gt_mask).sum()
+            fp = np.logical_and(single_pred, np.logical_not(gt_mask)).sum()
+            fn = np.logical_and(np.logical_not(single_pred), gt_mask).sum()
+            tn = np.logical_and(np.logical_not(single_pred), np.logical_not(gt_mask)).sum()
+
+            if metric_mode == 'custom_binary':
+                metric_logger.meters['tp'].update(tp)
+                metric_logger.meters['fp'].update(fp)
+                metric_logger.meters['fn'].update(fn)
+                metric_logger.meters['tn'].update(tn)
+            else:
+                union = tp + fp + fn
+                iou = tp / (union  + 1e-6)
+                metric_logger.meters['inter'].update(tp)
+                metric_logger.meters['union'].update(union)
+                metric_logger.meters['iou'].update(iou)
             
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    IOU = metric_logger.iou.global_avg
-    OIOU = metric_logger.inter.global_avg / (metric_logger.union.global_avg + 1e-6)
-    print('* IoU {iou:.3f} oIoU {oiou:.3f}'.format(iou=IOU, oiou=OIOU))
+    if metric_mode == 'custom_binary':
+        test_stats = _compute_custom_binary_metrics(
+            metric_logger.tp.total,
+            metric_logger.fp.total,
+            metric_logger.fn.total,
+            metric_logger.tn.total,
+        )
+        print(
+            '* IoU {iou:.2f}% Dice {dice:.2f}% Recall {recall:.2f}% mIoU {miou:.2f}% mAcc {macc:.2f}%'.format(
+                **test_stats
+            )
+        )
+        _write_metrics(test_stats, metrics_path)
+        return test_stats
 
-    return {
+    IOU = metric_logger.iou.global_avg
+    OIOU = metric_logger.inter.total / (metric_logger.union.total + 1e-6)
+    test_stats = {
         'iou': IOU,
         'oiou': OIOU,
     }
+    print('* IoU {iou:.3f} oIoU {oiou:.3f}'.format(iou=IOU, oiou=OIOU))
+    _write_metrics(test_stats, metrics_path)
+    return test_stats
 
