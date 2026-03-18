@@ -20,6 +20,13 @@ from model.utils import create_optimizer
 from ref_dataset import build_dataset, collate_fn
 
 
+def resolve_data_path(args):
+    if args.data_set == 'custom_binary' and args.data_path == './ref_dataset/data':
+        repo_root = Path(__file__).resolve().parent
+        return str((repo_root.parent / 'dataset').resolve())
+    return args.data_path
+
+
 def get_args_parser():
     parser = argparse.ArgumentParser('ReMamber training and evaluation script', add_help=False)
     parser.add_argument('--batch_size', default=8, type=int)
@@ -93,8 +100,10 @@ def get_args_parser():
     # Dataset parameters
     parser.add_argument('--data-path', default='./ref_dataset/data', type=str,
                         help='dataset path')
-    parser.add_argument('--data-set', default='refcoco', choices=['refcoco', 'refcoco+', 'refcocog'],
+    parser.add_argument('--data-set', default='refcoco', choices=['refcoco', 'refcoco+', 'refcocog', 'custom_binary'],
                         type=str)
+    parser.add_argument('--caption-index', default=2, type=int,
+                        help='caption index for custom_binary dataset')
 
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -132,10 +141,12 @@ def get_args_parser():
 
 def main(args):
     utils.init_distributed_mode(args)
+    args.data_path = resolve_data_path(args)
 
     print(args)
 
     device = torch.device(args.device)
+    is_custom_binary = args.data_set == 'custom_binary'
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -145,48 +156,63 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_dataset(is_train=True, args=args)
-    dataset_val = build_dataset(is_train=False, args=args)
+    dataset_train = None
+    dataset_val = None
+    if not args.eval:
+        dataset_train = build_dataset(is_train=True, args=args)
+    if args.eval or not is_custom_binary:
+        val_split = 'test' if is_custom_binary else 'val'
+        dataset_val = build_dataset(is_train=False, args=args, split=val_split)
     if args.debug_mode:
-        dataset_train = torch.utils.data.Subset(dataset_train, list(range(1000)))
-        dataset_val = torch.utils.data.Subset(dataset_val, list(range(300)))
+        if dataset_train is not None:
+            dataset_train = torch.utils.data.Subset(dataset_train, list(range(min(1000, len(dataset_train)))))
+        if dataset_val is not None:
+            dataset_val = torch.utils.data.Subset(dataset_val, list(range(min(300, len(dataset_val)))))
 
     if args.distributed:
         num_tasks = utils.get_world_size()
         global_rank = utils.get_rank()
 
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
-        if args.dist_eval:
-            if len(dataset_val) % num_tasks != 0:
-                print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
-                      'This will slightly alter validation results as extra duplicate entries are added to achieve '
-                      'equal num of samples per-process.')
-            sampler_val = torch.utils.data.DistributedSampler(
-                dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False)
-        else:
-            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_train = None
+        sampler_val = None
+        if dataset_train is not None:
+            sampler_train = torch.utils.data.DistributedSampler(
+                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+            )
+        if dataset_val is not None:
+            if args.dist_eval:
+                if len(dataset_val) % num_tasks != 0:
+                    print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
+                          'This will slightly alter validation results as extra duplicate entries are added to achieve '
+                          'equal num of samples per-process.')
+                sampler_val = torch.utils.data.DistributedSampler(
+                    dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False)
+            else:
+                sampler_val = torch.utils.data.SequentialSampler(dataset_val)
     else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_train = torch.utils.data.RandomSampler(dataset_train) if dataset_train is not None else None
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val) if dataset_val is not None else None
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        collate_fn=collate_fn,
-    )
+    data_loader_train = None
+    data_loader_val = None
+    if dataset_train is not None:
+        data_loader_train = torch.utils.data.DataLoader(
+            dataset_train, sampler=sampler_train,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            collate_fn=collate_fn,
+        )
 
-    data_loader_val = torch.utils.data.DataLoader(
-        dataset_val, sampler=sampler_val,
-        batch_size=1,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=False,
-        collate_fn=collate_fn,
-    )
+    if dataset_val is not None:
+        data_loader_val = torch.utils.data.DataLoader(
+            dataset_val, sampler=sampler_val,
+            batch_size=1,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=False,
+            collate_fn=collate_fn,
+        )
 
     print(f"Creating model: {args.model}")
     model, new_param = create_model(
@@ -257,7 +283,14 @@ def main(args):
         lr_scheduler.step(args.start_epoch)
         
     if args.eval:
-        test_stats = evaluate(data_loader_val, model, device, amp_autocast)
+        test_stats = evaluate(
+            data_loader_val,
+            model,
+            device,
+            amp_autocast,
+            metric_mode='binary' if is_custom_binary else 'legacy',
+        )
+        print(test_stats)
         return
     
 
@@ -285,34 +318,37 @@ def main(args):
                     'epoch': epoch,
                 }, checkpoint_path)
 
-        test_stats = evaluate(data_loader_val, model, device, amp_autocast, log_every=50)
-        print(f"IoU of the network on the {len(dataset_val)} test images: {test_stats['iou']:.1f}%")
-        
-        if max_accuracy < test_stats["iou"]:
-            max_accuracy = test_stats["iou"]
-            if args.output_dir:
-                checkpoint_paths = [output_dir / 'best_checkpoint.pth']
-                for checkpoint_path in checkpoint_paths:
-                    utils.save_on_master({
-                        'model': model_without_ddp.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'lr_scheduler': lr_scheduler.state_dict(),
-                        'epoch': epoch,
-                        'model_ema': get_state_dict(model_ema) if model_ema is not None else None,
-                        'scaler': loss_scaler.state_dict() if loss_scaler != 'none' else loss_scaler,
-                        'args': args,
-                    }, checkpoint_path)
-            
-        print(f'Max IoU: {max_accuracy:.2f}%')
+        log_stats = {
+            **{f'train_{k}': v for k, v in train_stats.items()},
+            'epoch': epoch,
+            'n_parameters': n_parameters,
+        }
 
-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                     **{f'test_{k}': v for k, v in test_stats.items()},
-                     'epoch': epoch,
-                     'n_parameters': n_parameters}
-        # test ema here
-        if model_ema:
-            test_stats_ema = evaluate(data_loader_val, model_ema.ema, device, amp_autocast, log_every=50)
-            log_stats.update({f'test_ema_{k}': v for k, v in test_stats_ema.items()})
+        if not is_custom_binary:
+            test_stats = evaluate(data_loader_val, model, device, amp_autocast, log_every=50)
+            print(f"IoU of the network on the {len(dataset_val)} test images: {test_stats['iou']:.1f}%")
+
+            if max_accuracy < test_stats["iou"]:
+                max_accuracy = test_stats["iou"]
+                if args.output_dir:
+                    checkpoint_paths = [output_dir / 'best_checkpoint.pth']
+                    for checkpoint_path in checkpoint_paths:
+                        utils.save_on_master({
+                            'model': model_without_ddp.state_dict(),
+                            'optimizer': optimizer.state_dict(),
+                            'lr_scheduler': lr_scheduler.state_dict(),
+                            'epoch': epoch,
+                            'model_ema': get_state_dict(model_ema) if model_ema is not None else None,
+                            'scaler': loss_scaler.state_dict() if loss_scaler != 'none' else loss_scaler,
+                            'args': args,
+                        }, checkpoint_path)
+
+            print(f'Max IoU: {max_accuracy:.2f}%')
+            log_stats.update({f'test_{k}': v for k, v in test_stats.items()})
+
+            if model_ema:
+                test_stats_ema = evaluate(data_loader_val, model_ema.ema, device, amp_autocast, log_every=50)
+                log_stats.update({f'test_ema_{k}': v for k, v in test_stats_ema.items()})
         
         if args.output_dir and utils.is_main_process():
             with (output_dir / "log.txt").open("a") as f:
