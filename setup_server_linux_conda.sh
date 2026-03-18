@@ -37,7 +37,7 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch==2.1.1 torchvision==0.16.1
 python -m pip install -r "${REPO_ROOT}/requirements.txt"
 python -m pip install -r "${REPO_ROOT}/requirements-server.txt"
-python -m pip install -e "${REPO_ROOT}/selective_scan"
+python -m pip install --no-build-isolation -e "${REPO_ROOT}/selective_scan"
 
 if [ ! -f "${PRETRAIN_FILE}" ]; then
   python -m gdown "${PRETRAIN_URL}" -O "${PRETRAIN_FILE}"
