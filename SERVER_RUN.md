@@ -38,7 +38,7 @@ bash setup_server_linux_conda.sh
 
 This creates the conda environment `remamber-4090`, installs the locked dependencies, builds `selective_scan`, downloads the official VMamba pretrain checkpoint into `pretrain/`, and prefetches `openai/clip-vit-large-patch14` into the local Hugging Face cache.
 
-The `selective_scan` install is intentionally executed with `--no-build-isolation` because its `setup.py` imports `torch` during build time.
+The `selective_scan` install is intentionally executed with `--no-build-isolation`, and the environment explicitly pins `numpy<2` plus a `setuptools` version that still provides `pkg_resources`, because its `setup.py` imports `torch` during build time.
 
 ## Training
 
