@@ -33,19 +33,20 @@ The repository now resolves `custom_binary` data to `../dataset` automatically w
 Run the Linux setup helper from the repository root:
 
 ```bash
-bash scripts/setup_server_linux.sh
+bash setup_server_linux_conda.sh
 ```
 
-This creates `.venv`, installs the locked dependencies, builds `selective_scan`, downloads the official VMamba pretrain checkpoint into `pretrain/`, and prefetches `openai/clip-vit-large-patch14` into the local Hugging Face cache.
+This creates the conda environment `remamber-4090`, installs the locked dependencies, builds `selective_scan`, downloads the official VMamba pretrain checkpoint into `pretrain/`, and prefetches `openai/clip-vit-large-patch14` into the local Hugging Face cache.
 
 ## Training
 
 From the repository root:
 
 ```bash
-source .venv/bin/activate
+conda activate remamber-4090
 python main.py \
   --model ReMamber_Mamba \
+  --data-path ../dataset \
   --data-set custom_binary \
   --caption-index 2 \
   --output_dir outputs/remamber_mamba_custom
@@ -62,9 +63,10 @@ Notes:
 Use the final checkpoint on the `test` split only:
 
 ```bash
-source .venv/bin/activate
+conda activate remamber-4090
 python main.py \
   --model ReMamber_Mamba \
+  --data-path ../dataset \
   --data-set custom_binary \
   --caption-index 2 \
   --resume outputs/remamber_mamba_custom/checkpoint.pth \
@@ -90,7 +92,7 @@ These are runtime assets and must stay out of Git:
 
 - `../dataset`
 - `pretrain/`
-- `.venv/`
+- `remamber-4090` conda environment
 - `.cache/` or `hf_cache/`
 - `outputs/`
 - compiled extension artifacts under `selective_scan/`
