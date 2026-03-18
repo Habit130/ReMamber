@@ -52,13 +52,18 @@ def train_one_epoch(model: torch.nn.Module,
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 20
         
-    for batch in metric_logger.log_every(data_loader, print_freq, header):
+    for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         imgs = batch['query_img'].to(device, non_blocking=True)
         masks = batch['query_mask'].to(device, non_blocking=True)
         sents = batch['sentence']
          
         with amp_autocast():
             pred, _, loss = model(imgs, sents, masks.float(), epoch=epoch)
+
+        if not torch.isfinite(loss):
+            print(f"Non-finite loss detected at epoch={epoch}, step={step}. Skipping optimizer update.", flush=True)
+            optimizer.zero_grad(set_to_none=True)
+            continue
 
         loss_value = loss.item()
         iou_train = trainMetricGPU(pred, masks)
