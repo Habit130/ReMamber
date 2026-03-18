@@ -145,7 +145,8 @@ def build_checkpoint_state(model_without_ddp, optimizer, lr_scheduler, epoch, mo
         'epoch': epoch,
         'model_ema': get_state_dict(model_ema) if model_ema is not None else None,
         'scaler': loss_scaler.state_dict() if loss_scaler != 'none' else loss_scaler,
-        'args': args,
+        # Store plain data to keep checkpoints loadable under newer PyTorch defaults.
+        'args': vars(args),
     }
 
 
@@ -237,7 +238,7 @@ def main(args):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.finetune, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.finetune, map_location='cpu')
+            checkpoint = torch.load(args.finetune, map_location='cpu', weights_only=False)
 
         checkpoint_model = checkpoint['model']
 
@@ -279,7 +280,7 @@ def main(args):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
         model_without_ddp.load_state_dict(checkpoint['model'])
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
