@@ -7,6 +7,7 @@ HF_HOME_DIR="${REPO_ROOT}/hf_cache"
 PRETRAIN_FILE="${PRETRAIN_DIR}/vssm_base_0229_ckpt_epoch_237.pth"
 PRETRAIN_URL="https://drive.google.com/uc?id=1O9P6XLuWtUxFa70vwrYCRVedRAFutczV"
 ENV_NAME="${CONDA_ENV_NAME:-remamber-4090}"
+EXPECTED_CUDA_VERSION="11.8"
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required" >&2
@@ -25,6 +26,13 @@ fi
 
 export CUDA_HOME="${CUDA_HOME:-$(cd "$(dirname "$(command -v nvcc)")/.." && pwd)}"
 export HF_HOME="${HF_HOME_DIR}"
+
+NVCC_VERSION="$("${CUDA_HOME}/bin/nvcc" -V | sed -n 's/.*release \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1)"
+if [ "${NVCC_VERSION}" != "${EXPECTED_CUDA_VERSION}" ]; then
+  echo "CUDA toolkit mismatch: nvcc is ${NVCC_VERSION}, but torch==2.1.1+cu118 requires CUDA ${EXPECTED_CUDA_VERSION} for extension builds." >&2
+  echo "Set CUDA_HOME to a CUDA ${EXPECTED_CUDA_VERSION} toolkit, for example: export CUDA_HOME=/usr/local/cuda-11.8" >&2
+  exit 1
+fi
 
 mkdir -p "${PRETRAIN_DIR}" "${HF_HOME_DIR}"
 

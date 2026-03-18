@@ -29,7 +29,7 @@ def resolve_data_path(args):
 
 def get_args_parser():
     parser = argparse.ArgumentParser('ReMamber training and evaluation script', add_help=False)
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--epochs', default=50, type=int)
 
     # Model parameters

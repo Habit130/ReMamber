@@ -48,6 +48,7 @@ From the repository root:
 conda activate remamber-4090
 python main.py \
   --model ReMamber_Mamba \
+  --batch_size 4 \
   --data-path ../dataset \
   --data-set custom_binary \
   --caption-index 2 \
