@@ -2,31 +2,21 @@
 
 本仓库的服务器交付面固定为单卡 RTX 4090、CUDA 11.8、Python 3.10、`../plantseg` 数据集和 `ReMamber_Mamba`。
 
-## 1. 环境准备
+## 1. 一键重建环境
 
 ```bash
-conda env create -f environment.linux.4090.yml
-conda activate remamber-linux-4090
-python -m pip install --upgrade "setuptools>=70.1,<81" "wheel>=0.43"
-python -m pip install --no-build-isolation ./selective_scan
+bash ./setup_linux_4090.sh
 ```
 
-如果环境已创建但包状态异常，执行下面这组修复命令：
+这个脚本会自动：
 
-```bash
-conda activate remamber-linux-4090
-python -m pip install --upgrade pip
-python -m pip install --upgrade "setuptools>=70.1,<81" "wheel>=0.43"
-python -m pip install "numpy<2"
-python -m pip install -r requirements.txt
-python -m pip install --no-build-isolation ./selective_scan
-```
-
-建议在训练前先做一次导入检查：
-
-```bash
-python -c "import numpy, torch, torchvision, timm, transformers, einops, gdown, triton; print('numpy', numpy.__version__)"
-```
+- 删除旧的 `remamber-linux-4090` 环境
+- 重新创建环境
+- 处理 MKL 激活变量
+- 配置 Conda 编译器到 `gcc/g++`
+- 安装 `requirements.txt`
+- 编译并安装 `./selective_scan`
+- 执行关键导入检查
 
 ## 2. 训练
 
