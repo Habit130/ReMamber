@@ -15,4 +15,3 @@ dependencies:
   - wheel
   - pip:
       - -r requirements.txt
-      - ./selective_scan
