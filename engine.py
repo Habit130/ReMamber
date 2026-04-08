@@ -29,6 +29,33 @@ def trainMetricGPU(output, target, threshold=0.5):
     iou = ious.mean()
     return iou
 
+
+def compute_binary_metrics(pred_mask, gt_mask):
+    pred_mask = pred_mask.astype(bool)
+    gt_mask = gt_mask.astype(bool)
+
+    tp = np.logical_and(pred_mask, gt_mask).sum()
+    tn = np.logical_and(~pred_mask, ~gt_mask).sum()
+    fp = np.logical_and(pred_mask, ~gt_mask).sum()
+    fn = np.logical_and(~pred_mask, gt_mask).sum()
+
+    fg_iou = tp / (tp + fp + fn + 1e-6)
+    bg_iou = tn / (tn + fp + fn + 1e-6)
+    dice = (2 * tp) / (2 * tp + fp + fn + 1e-6)
+    recall = tp / (tp + fn + 1e-6)
+    bg_acc = tn / (tn + fp + 1e-6)
+    miou = (fg_iou + bg_iou) / 2
+    macc = (recall + bg_acc) / 2
+
+    return {
+        'iou': fg_iou,
+        'dice': dice,
+        'recall': recall,
+        'miou': miou,
+        'macc': macc,
+    }
+
+
 def train_one_epoch(model: torch.nn.Module, 
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, amp_autocast, max_norm: float = 0,
@@ -120,21 +147,24 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
             single_pred = single_pred.sigmoid()
             single_pred = single_pred.cpu().numpy()
             single_pred = single_pred > 0.5
-            inter = np.logical_and(single_pred, gt_mask).sum()
-            union = np.logical_or(single_pred, gt_mask).sum()
-            iou = inter / (union  + 1e-6)
-            metric_logger.meters['inter'].update(inter)
-            metric_logger.meters['union'].update(union)
-            metric_logger.meters['iou'].update(iou)
+            metrics = compute_binary_metrics(single_pred, gt_mask)
+            for name, value in metrics.items():
+                metric_logger.meters[name].update(value)
             
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    IOU = metric_logger.iou.global_avg
-    OIOU = metric_logger.inter.global_avg / (metric_logger.union.global_avg + 1e-6)
-    print('* IoU {iou:.3f} oIoU {oiou:.3f}'.format(iou=IOU, oiou=OIOU))
-
-    return {
-        'iou': IOU,
-        'oiou': OIOU,
+    stats = {
+        'iou': metric_logger.iou.global_avg,
+        'dice': metric_logger.dice.global_avg,
+        'recall': metric_logger.recall.global_avg,
+        'miou': metric_logger.miou.global_avg,
+        'macc': metric_logger.macc.global_avg,
     }
+    print(
+        '* IoU {iou:.3f} Dice {dice:.3f} Recall {recall:.3f} mIoU {miou:.3f} mACC {macc:.3f}'.format(
+            **stats,
+        )
+    )
+
+    return stats
 

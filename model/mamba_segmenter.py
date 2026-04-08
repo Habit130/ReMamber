@@ -147,14 +147,24 @@ class MambaDecoder(nn.Module):
 
 class MambaSegmentor(BaseSegmenter):
     def __init__(self, backbone, **kwargs):
-        super().__init__(backbone)
+        super().__init__(backbone, **kwargs)
         self.decoder = MambaDecoder(**kwargs)
 
 
 
 @register_model
-def ReMamber_Mamba(img_size=256, model_size="tiny", **kwargs):
+def ReMamber_Mamba(img_size=256, model_size="base", **kwargs):
+    pretrain_path = kwargs.pop("pretrain_path", "./pretrain")
+    hf_cache_dir = kwargs.pop("hf_cache_dir", "")
+    clip_model_name = kwargs.pop("clip_model_name", None)
+    vmamba_download_url = kwargs.pop("vmamba_download_url", "")
     config_dict = update_mamba_config(model_size)
     backbone = ReMamber(img_size=img_size, **config_dict)
-    backbone, ret = load_ckpt(backbone, model_size)
-    return MambaSegmentor(backbone, **config_dict), ret[0]
+    backbone, ret = load_ckpt(backbone, model_size, pretrain_path=pretrain_path, download_url=vmamba_download_url)
+    return MambaSegmentor(
+        backbone,
+        pretrain_path=pretrain_path,
+        hf_cache_dir=hf_cache_dir,
+        clip_model_name=clip_model_name,
+        **config_dict,
+    ), ret[0]

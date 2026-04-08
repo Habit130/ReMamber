@@ -154,7 +154,7 @@ class ConvDecoder(nn.Module):
 
 class ConvSegmentor(BaseSegmenter):
     def __init__(self, backbone, img_size=256, patch_size=4, embed_dim=256, **kwargs):
-        super().__init__(backbone)
+        super().__init__(backbone, **kwargs)
         res = img_size // patch_size
         self.decoder = ConvDecoder(in_dim=embed_dim, resolution=res)
 
@@ -162,9 +162,21 @@ class ConvSegmentor(BaseSegmenter):
 
 @register_model
 def ReMamber_Conv(img_size, model_size="base", **kwargs):
+    pretrain_path = kwargs.pop("pretrain_path", "./pretrain")
+    hf_cache_dir = kwargs.pop("hf_cache_dir", "")
+    clip_model_name = kwargs.pop("clip_model_name", None)
+    vmamba_download_url = kwargs.pop("vmamba_download_url", "")
     config_dict = update_mamba_config(model_size)
     backbone = ReMamber(**config_dict)
-    backbone, ret = load_ckpt(backbone, model_size)
-    model = ConvSegmentor(backbone, img_size=img_size, embed_dim=config_dict['dims'][0], patch_size=config_dict['patch_size'])
+    backbone, ret = load_ckpt(backbone, model_size, pretrain_path=pretrain_path, download_url=vmamba_download_url)
+    model = ConvSegmentor(
+        backbone,
+        img_size=img_size,
+        embed_dim=config_dict['dims'][0],
+        patch_size=config_dict['patch_size'],
+        pretrain_path=pretrain_path,
+        hf_cache_dir=hf_cache_dir,
+        clip_model_name=clip_model_name,
+    )
     return model, ret[0]
 

@@ -22,13 +22,14 @@ from ref_dataset import build_dataset, collate_fn
 
 def get_args_parser():
     parser = argparse.ArgumentParser('ReMamber training and evaluation script', add_help=False)
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--epochs', default=50, type=int)
 
     # Model parameters
-    parser.add_argument('--model', default='ReMamber_Conv', type=str, metavar='MODEL', choices=['ReMamber_Conv', 'ReMamber_Mamba'],
+    parser.add_argument('--model', default='ReMamber_Mamba', type=str, metavar='MODEL', choices=['ReMamber_Conv', 'ReMamber_Mamba'],
                         help='Name of model to train')
     parser.add_argument('--pretrain-path', default='./pretrain', type=str)
+    parser.add_argument('--hf-cache-dir', default='', type=str)
     parser.add_argument('--input-size', default=480, type=int, help='images input size')
 
     parser.add_argument('--drop', type=float, default=0.0, metavar='PCT',
@@ -91,10 +92,12 @@ def get_args_parser():
     parser.add_argument('--finetune', default='', help='finetune from checkpoint')
     
     # Dataset parameters
-    parser.add_argument('--data-path', default='./ref_dataset/data', type=str,
+    parser.add_argument('--data-path', default='../plantseg', type=str,
                         help='dataset path')
-    parser.add_argument('--data-set', default='refcoco', choices=['refcoco', 'refcoco+', 'refcocog'],
+    parser.add_argument('--data-set', default='plantseg', choices=['refcoco', 'refcoco+', 'refcocog', 'plantseg'],
                         type=str)
+    parser.add_argument('--caption-index', default=3, type=int)
+    parser.add_argument('--eval-split', default='val', choices=['val', 'test'], type=str)
 
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -146,7 +149,7 @@ def main(args):
     cudnn.benchmark = True
 
     dataset_train = build_dataset(is_train=True, args=args)
-    dataset_val = build_dataset(is_train=False, args=args)
+    dataset_val = build_dataset(is_train=False, args=args, split=args.eval_split)
     if args.debug_mode:
         dataset_train = torch.utils.data.Subset(dataset_train, list(range(1000)))
         dataset_val = torch.utils.data.Subset(dataset_val, list(range(300)))
@@ -193,6 +196,8 @@ def main(args):
         args.model,
         img_size=args.input_size,
         model_size="base",
+        pretrain_path=args.pretrain_path,
+        hf_cache_dir=args.hf_cache_dir,
     )
 
     if args.finetune:
@@ -258,12 +263,16 @@ def main(args):
         
     if args.eval:
         test_stats = evaluate(data_loader_val, model, device, amp_autocast)
+        if args.output_dir and utils.is_main_process():
+            metrics_path = output_dir / f"eval_{args.eval_split}_metrics.json"
+            with metrics_path.open("w") as f:
+                json.dump(test_stats, f, indent=2)
         return
     
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
-    max_accuracy = 0.0
+    best_miou = 0.0
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -286,10 +295,14 @@ def main(args):
                 }, checkpoint_path)
 
         test_stats = evaluate(data_loader_val, model, device, amp_autocast, log_every=50)
-        print(f"IoU of the network on the {len(dataset_val)} test images: {test_stats['iou']:.1f}%")
+        print(
+            f"{args.eval_split} metrics on {len(dataset_val)} images: "
+            f"IoU={test_stats['iou']:.4f} Dice={test_stats['dice']:.4f} "
+            f"Recall={test_stats['recall']:.4f} mIoU={test_stats['miou']:.4f} mACC={test_stats['macc']:.4f}"
+        )
         
-        if max_accuracy < test_stats["iou"]:
-            max_accuracy = test_stats["iou"]
+        if best_miou < test_stats["miou"]:
+            best_miou = test_stats["miou"]
             if args.output_dir:
                 checkpoint_paths = [output_dir / 'best_checkpoint.pth']
                 for checkpoint_path in checkpoint_paths:
@@ -303,7 +316,7 @@ def main(args):
                         'args': args,
                     }, checkpoint_path)
             
-        print(f'Max IoU: {max_accuracy:.2f}%')
+        print(f'Best mIoU: {best_miou:.4f}')
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      **{f'test_{k}': v for k, v in test_stats.items()},

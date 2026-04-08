@@ -2,16 +2,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTokenizerFast
 
+from .assets import CLIP_MODEL_NAME, resolve_hf_cache_dir
 from .utils import dice_loss, sigmoid_focal_loss
 
 
 class BaseSegmenter(nn.Module):
-    def __init__(self, backbone, **kwargs):
+    def __init__(self, backbone, pretrain_path="./pretrain", hf_cache_dir="", clip_model_name=CLIP_MODEL_NAME, **kwargs):
         super().__init__()
         self.backbone = backbone
         self.decoder = None
-        self.tokenizer = CLIPTokenizerFast.from_pretrained('openai/clip-vit-large-patch14')
-        self.text_encoder = CLIPTextModel.from_pretrained('openai/clip-vit-large-patch14')
+        clip_model_name = clip_model_name or CLIP_MODEL_NAME
+        cache_dir = resolve_hf_cache_dir(pretrain_path, hf_cache_dir)
+        self.tokenizer = CLIPTokenizerFast.from_pretrained(clip_model_name, cache_dir=cache_dir)
+        self.text_encoder = CLIPTextModel.from_pretrained(clip_model_name, cache_dir=cache_dir)
 
     def forward(self, x, text, mask=None, **kwargs):
         encode_text = self.tokenizer(text, padding='max_length', truncation=True, max_length=20, return_tensors='pt')

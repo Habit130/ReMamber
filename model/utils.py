@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 
+from .assets import ensure_vmamba_checkpoint
 from .config import _C as config
 
 def dice_loss(inputs, targets, epoch=None):
@@ -155,11 +156,8 @@ def create_optimizer(args, model:nn.Module, new_param):
     return optimizer
 
 
-def load_ckpt(backbone, model_size):
-    if model_size == 'base':
-        name = "vssm_base_0229_ckpt_epoch_237.pth"
-        path = f"pretrain/{name}"
-        
+def load_ckpt(backbone, model_size, pretrain_path="./pretrain", download_url=""):
+    path = ensure_vmamba_checkpoint(pretrain_path=pretrain_path, model_size=model_size, download_url=download_url)
     st = torch.load(path, map_location='cpu')
     ret = backbone.load_state_dict(st['model'], strict=False)
     ret0_toprint = []
