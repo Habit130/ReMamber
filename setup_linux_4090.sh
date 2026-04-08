@@ -52,10 +52,10 @@ command -v gcc >/dev/null
 command -v g++ >/dev/null
 gcc --version
 g++ --version
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 
-echo "[6/7] Installing Python dependencies and selective_scan"
+echo "[6/7] Installing Python dependencies, torch cu118 and selective_scan"
 python -m pip install --upgrade pip
+python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu118 torch==2.1.1 torchvision==0.16.1 torchaudio==2.1.1
 python -m pip install --no-cache-dir -r requirements.txt
 python -m pip install --no-build-isolation --no-cache-dir ./selective_scan
 

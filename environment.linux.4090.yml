@@ -1,19 +1,8 @@
 name: remamber-linux-4090
 channels:
-  - pytorch
-  - nvidia
   - defaults
 dependencies:
   - python=3.10
   - pip
-  - mkl=2024.0
-  - intel-openmp=2024.0
-  - mkl-service=2.4.0
-  - pytorch=2.1.1
-  - torchvision=0.16.1
-  - torchaudio=2.1.1
-  - pytorch-cuda=11.8
   - setuptools>=70.1,<81
   - wheel>=0.43
-  - pip:
-      - -r requirements.txt
