@@ -9,6 +9,22 @@ conda env create -f environment.linux.4090.yml
 conda activate remamber-linux-4090
 ```
 
+如果环境已创建但包状态异常，执行下面这组修复命令：
+
+```bash
+conda activate remamber-linux-4090
+python -m pip install --upgrade pip
+python -m pip install "numpy<2"
+python -m pip install -r requirements.txt
+python -m pip install ./selective_scan
+```
+
+建议在训练前先做一次导入检查：
+
+```bash
+python -c "import numpy, torch, torchvision, timm, transformers, einops, gdown, triton; print('numpy', numpy.__version__)"
+```
+
 ## 2. 训练
 
 ```bash
