@@ -17,10 +17,12 @@ conda deactivate >/dev/null 2>&1 || true
 conda env remove -n "$ENV_NAME" -y >/dev/null 2>&1 || true
 
 echo "[2/7] Creating fresh environment"
-if conda env create --help 2>&1 | grep -q -- "--solver"; then
+if command -v mamba >/dev/null 2>&1; then
+  mamba env create -f environment.linux.4090.yml
+elif conda env create --help 2>&1 | grep -q "libmamba"; then
   conda env create --solver libmamba -f environment.linux.4090.yml
 else
-  conda env create -f environment.linux.4090.yml
+  conda env create --solver classic -f environment.linux.4090.yml
 fi
 
 echo "[3/7] Activating environment"
