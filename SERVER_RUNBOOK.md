@@ -7,6 +7,7 @@
 ```bash
 conda env create -f environment.linux.4090.yml
 conda activate remamber-linux-4090
+python -m pip install --upgrade "setuptools>=70.1,<81" "wheel>=0.43"
 python -m pip install --no-build-isolation ./selective_scan
 ```
 
@@ -15,6 +16,7 @@ python -m pip install --no-build-isolation ./selective_scan
 ```bash
 conda activate remamber-linux-4090
 python -m pip install --upgrade pip
+python -m pip install --upgrade "setuptools>=70.1,<81" "wheel>=0.43"
 python -m pip install "numpy<2"
 python -m pip install -r requirements.txt
 python -m pip install --no-build-isolation ./selective_scan
