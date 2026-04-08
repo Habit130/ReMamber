@@ -2,23 +2,14 @@ name: remamber-linux-4090
 channels:
   - pytorch
   - nvidia
-  - conda-forge
+  - defaults
 dependencies:
   - python=3.10
   - pip
-  - numpy=1.26.4
-  - libblas=*=*openblas
   - pytorch=2.1.1
   - torchvision=0.16.1
   - torchaudio=2.1.1
   - pytorch-cuda=11.8
-  - gcc_linux-64=11
-  - gxx_linux-64=11
-  - sysroot_linux-64=2.17
-  - make
-  - cmake
-  - ninja>=1.11
-  - packaging=24.0
   - setuptools>=70.1,<81
   - wheel>=0.43
   - pip:

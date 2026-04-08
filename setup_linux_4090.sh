@@ -17,24 +17,39 @@ conda deactivate >/dev/null 2>&1 || true
 conda env remove -n "$ENV_NAME" -y >/dev/null 2>&1 || true
 
 echo "[2/7] Creating fresh environment"
-conda env create --solver classic -f environment.linux.4090.yml
+if conda env create --help 2>&1 | grep -q -- "--solver"; then
+  conda env create --solver libmamba -f environment.linux.4090.yml
+else
+  conda env create -f environment.linux.4090.yml
+fi
 
 echo "[3/7] Activating environment"
 conda activate "$ENV_NAME"
 
-echo "[4/7] Wiring compiler toolchain for torch cpp_extension"
+echo "[4/7] Preparing compiler toolchain for torch cpp_extension"
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
 export PATH="$CONDA_PREFIX/bin:$CUDA_HOME/bin:$PATH"
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
-export CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
-export CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
-ln -sf "$CC" "$CONDA_PREFIX/bin/gcc"
-ln -sf "$CXX" "$CONDA_PREFIX/bin/g++"
+
+if ! command -v g++ >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential
+  else
+    echo "g++ is required but apt-get is unavailable. Install build-essential manually." >&2
+    exit 1
+  fi
+fi
+
+export CC="${CC:-$(command -v gcc)}"
+export CXX="${CXX:-$(command -v g++)}"
 
 echo "[5/7] Verifying CUDA and compiler prerequisites"
 command -v nvcc >/dev/null
 command -v gcc >/dev/null
 command -v g++ >/dev/null
+gcc --version
+g++ --version
 python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 
 echo "[6/7] Installing Python dependencies and selective_scan"
