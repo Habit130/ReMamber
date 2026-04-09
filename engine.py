@@ -66,6 +66,14 @@ def save_pred_mask_image(pred_mask, save_dir, image_filename, sentence_idx=0, re
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
+    pred_mask = np.asarray(pred_mask)
+    if pred_mask.ndim == 3 and pred_mask.shape[0] == 1:
+        pred_mask = pred_mask[0]
+    elif pred_mask.ndim == 3 and pred_mask.shape[-1] == 1:
+        pred_mask = pred_mask[..., 0]
+    elif pred_mask.ndim != 2:
+        raise ValueError(f"Expected 2D pred_mask for saving, got shape {pred_mask.shape}")
+
     if reference_mask_path:
         reference_path = Path(reference_mask_path)
         output_name = reference_path.name
