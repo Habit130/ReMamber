@@ -98,6 +98,8 @@ def get_args_parser():
                         type=str)
     parser.add_argument('--caption-index', default=3, type=int)
     parser.add_argument('--eval-split', default='val', choices=['val', 'test'], type=str)
+    parser.add_argument('--save-pred-masks', action='store_true', default=False)
+    parser.add_argument('--pred-mask-dir', default='', type=str)
 
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -262,7 +264,17 @@ def main(args):
         lr_scheduler.step(args.start_epoch)
         
     if args.eval:
-        test_stats = evaluate(data_loader_val, model, device, amp_autocast)
+        pred_mask_dir = None
+        if args.save_pred_masks:
+            pred_mask_dir = Path(args.pred_mask_dir) if args.pred_mask_dir else output_dir / "pred_masks" / args.eval_split
+        test_stats = evaluate(
+            data_loader_val,
+            model,
+            device,
+            amp_autocast,
+            save_pred_masks=args.save_pred_masks,
+            pred_mask_dir=pred_mask_dir,
+        )
         if args.output_dir and utils.is_main_process():
             metrics_path = output_dir / f"eval_{args.eval_split}_metrics.json"
             with metrics_path.open("w") as f:

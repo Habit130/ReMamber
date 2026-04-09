@@ -3,11 +3,13 @@
 """
 Train and eval functions used in main.py
 """
+from pathlib import Path
 from typing import Iterable, Optional
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from timm.utils import ModelEma
 
 import utils
@@ -60,6 +62,48 @@ def format_metrics_as_percent(stats):
     return {name: f"{value * 100:.2f}%" for name, value in stats.items()}
 
 
+def save_pred_mask_image(pred_mask, save_dir, image_filename, sentence_idx=0, reference_mask_path=None):
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    if reference_mask_path:
+        reference_path = Path(reference_mask_path)
+        output_name = reference_path.name
+    else:
+        output_name = f"{Path(image_filename).stem}.png"
+
+    if sentence_idx > 0:
+        output_name = f"{Path(output_name).stem}_sent{sentence_idx}{Path(output_name).suffix}"
+
+    output_path = save_dir / output_name
+    pred_array = pred_mask.astype(np.uint8)
+
+    if reference_mask_path and Path(reference_mask_path).exists():
+        ref_image = Image.open(reference_mask_path)
+        ref_mode = ref_image.mode
+        ref_palette = ref_image.getpalette()
+        ref_array = np.array(ref_image)
+        foreground_value = int(ref_array.max()) if ref_array.size else 255
+        if foreground_value <= 0:
+            foreground_value = 255
+        pred_array = pred_array * foreground_value
+
+        if ref_mode == "1":
+            pred_image = Image.fromarray(pred_array.astype(np.uint8), mode="L").convert("1")
+        elif ref_mode == "P":
+            pred_image = Image.fromarray(pred_array.astype(np.uint8), mode="P")
+            if ref_palette is not None:
+                pred_image.putpalette(ref_palette)
+        elif ref_mode in {"L", "I", "I;16"}:
+            pred_image = Image.fromarray(pred_array.astype(np.uint8), mode="L")
+        else:
+            pred_image = Image.fromarray(pred_array.astype(np.uint8), mode="L")
+    else:
+        pred_image = Image.fromarray((pred_array * 255).astype(np.uint8), mode="L")
+
+    pred_image.save(output_path)
+
+
 def train_one_epoch(model: torch.nn.Module, 
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, amp_autocast, max_norm: float = 0,
@@ -109,7 +153,7 @@ def train_one_epoch(model: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device, amp_autocast, log_every=10):
+def evaluate(data_loader, model, device, amp_autocast, log_every=10, save_pred_masks=False, pred_mask_dir=None):
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -126,6 +170,9 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
         unfold_mask = []
         unfold_sent = []
         gt_mask_list = []
+        pred_image_filename_list = []
+        pred_mask_path_list = []
+        pred_sentence_idx_list = []
         for batch_idx, single_sent in enumerate(sents):
             new_bs = len(single_sent)
             img = imgs[batch_idx].unsqueeze(0)
@@ -137,8 +184,16 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
             unfold_mask.append(mask)
             
             gt_mask = batch['org_gt'][batch_idx]
+            image_filename = batch['image_filename'][batch_idx]
+            mask_path = None
+            if 'mask_path' in batch:
+                mask_path = batch['mask_path'][batch_idx]
             for _ in range(new_bs):
                 gt_mask_list.append(gt_mask)
+            for sent_idx in range(new_bs):
+                pred_image_filename_list.append(image_filename)
+                pred_mask_path_list.append(mask_path)
+                pred_sentence_idx_list.append(sent_idx)
             
             unfold_sent.extend(single_sent)
             
@@ -146,7 +201,13 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
         unfold_mask = torch.cat(unfold_mask, dim=0)
         pred = model(unfold_img, unfold_sent, unfold_mask.float())
         
-        for single_pred, gt_mask in zip(pred, gt_mask_list):
+        for single_pred, gt_mask, image_filename, mask_path, sentence_idx in zip(
+            pred,
+            gt_mask_list,
+            pred_image_filename_list,
+            pred_mask_path_list,
+            pred_sentence_idx_list,
+        ):
             single_pred = F.interpolate(single_pred[None,], gt_mask.shape)[0]
             single_pred = single_pred.sigmoid()
             single_pred = single_pred.cpu().numpy()
@@ -154,6 +215,14 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
             metrics = compute_binary_metrics(single_pred, gt_mask)
             for name, value in metrics.items():
                 metric_logger.meters[name].update(value)
+            if save_pred_masks and pred_mask_dir is not None:
+                save_pred_mask_image(
+                    pred_mask=single_pred,
+                    save_dir=pred_mask_dir,
+                    image_filename=image_filename,
+                    sentence_idx=sentence_idx,
+                    reference_mask_path=mask_path,
+                )
             
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

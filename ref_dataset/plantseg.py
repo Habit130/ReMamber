@@ -56,5 +56,6 @@ class PlantSegDataset(data.Dataset):
             "category_id": 0,
             "class_name": sample["disease_label"],
             "image_filename": image_path.name,
+            "mask_path": str(mask_path),
             "org_gt": org_gt,
         }
