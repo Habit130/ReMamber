@@ -56,6 +56,10 @@ def compute_binary_metrics(pred_mask, gt_mask):
     }
 
 
+def format_metrics_as_percent(stats):
+    return {name: f"{value * 100:.2f}%" for name, value in stats.items()}
+
+
 def train_one_epoch(model: torch.nn.Module, 
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, amp_autocast, max_norm: float = 0,
@@ -160,9 +164,10 @@ def evaluate(data_loader, model, device, amp_autocast, log_every=10):
         'miou': metric_logger.miou.global_avg,
         'macc': metric_logger.macc.global_avg,
     }
+    pretty_stats = format_metrics_as_percent(stats)
     print(
-        '* IoU {iou:.3f} Dice {dice:.3f} Recall {recall:.3f} mIoU {miou:.3f} mACC {macc:.3f}'.format(
-            **stats,
+        '* IoU {iou} Dice {dice} Recall {recall} mIoU {miou} mACC {macc}'.format(
+            **pretty_stats,
         )
     )
 

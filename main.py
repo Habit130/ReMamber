@@ -15,7 +15,7 @@ from timm.utils import ModelEma, NativeScaler, get_state_dict
 import model.conv_segmenter
 import model.mamba_segmenter
 import utils as utils
-from engine import evaluate, train_one_epoch
+from engine import evaluate, format_metrics_as_percent, train_one_epoch
 from model.utils import create_optimizer
 from ref_dataset import build_dataset, collate_fn
 
@@ -266,7 +266,7 @@ def main(args):
         if args.output_dir and utils.is_main_process():
             metrics_path = output_dir / f"eval_{args.eval_split}_metrics.json"
             with metrics_path.open("w") as f:
-                json.dump(test_stats, f, indent=2)
+                json.dump(format_metrics_as_percent(test_stats), f, indent=2)
         return
     
 
@@ -295,10 +295,11 @@ def main(args):
                 }, checkpoint_path)
 
         test_stats = evaluate(data_loader_val, model, device, amp_autocast, log_every=50)
+        pretty_test_stats = format_metrics_as_percent(test_stats)
         print(
             f"{args.eval_split} metrics on {len(dataset_val)} images: "
-            f"IoU={test_stats['iou']:.4f} Dice={test_stats['dice']:.4f} "
-            f"Recall={test_stats['recall']:.4f} mIoU={test_stats['miou']:.4f} mACC={test_stats['macc']:.4f}"
+            f"IoU={pretty_test_stats['iou']} Dice={pretty_test_stats['dice']} "
+            f"Recall={pretty_test_stats['recall']} mIoU={pretty_test_stats['miou']} mACC={pretty_test_stats['macc']}"
         )
         
         if best_miou < test_stats["miou"]:
